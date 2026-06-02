@@ -1,0 +1,197 @@
+.root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-void);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border-dim) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,229,200,0.06) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 2rem 2rem 1.5rem;
+  box-shadow: 0 0 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,229,200,0.04);
+}
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 1.5rem;
+}
+
+.logo {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r);
+  background: var(--accent-soft);
+  border: 1px solid rgba(0,229,200,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logoInner {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.brandName {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-1);
+}
+
+.brandAccent { color: var(--accent); }
+
+.brandSub {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 1.5rem;
+}
+
+/* Form */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.stageLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  margin-bottom: -2px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.totpInput {
+  font-family: var(--font-mono) !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  text-align: center;
+  letter-spacing: 0.4em;
+  padding: 1rem !important;
+  background: var(--bg-void) !important;
+  color: var(--accent) !important;
+}
+
+.eyeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 0;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.eyeBtn:hover { color: var(--accent); }
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--danger-soft);
+  border: 1px solid rgba(240,62,62,0.2);
+  border-radius: var(--r);
+  padding: 0.6rem 0.8rem;
+  font-size: 12px;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  line-height: 1.4;
+}
+
+.errIcon {
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.switchBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: 4px;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.switchBtn:hover { color: var(--accent); }
+
+/* Footer badges */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-3);
+  border: 1px solid var(--border-dim);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
