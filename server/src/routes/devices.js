@@ -10,6 +10,31 @@ const { generateDeviceKey } = require("../utils/auth");
 const { audit }             = require("../middleware/audit");
 const { deviceLimiter }     = require("../middleware/rateLimiter");
 
+// ─── Background offline detector ─────────────────────────────────────────────
+// Runs every 60s. Marks a device offline if last_seen is older than
+// (heartbeat_interval * 3) seconds — gives 3 missed beats before offline.
+function startOfflineDetector() {
+  setInterval(() => {
+    try {
+      const result = db.prepare(`
+        UPDATE devices
+        SET status = 'offline', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+        WHERE status = 'online'
+          AND last_seen IS NOT NULL
+          AND (
+            CAST((julianday('now') - julianday(last_seen)) * 86400 AS INTEGER)
+            > (heartbeat_interval * 3)
+          )
+      `).run();
+      if (result.changes > 0)
+        console.log(`[offline-detector] marked ${result.changes} device(s) offline`);
+    } catch (err) {
+      console.error("[offline-detector] error:", err.message);
+    }
+  }, 60_000);
+}
+startOfflineDetector();
+
 // ─── GET /api/devices ─────────────────────────────────────────────────────────
 router.get("/", authenticate, (req, res) => {
   const rows = db.prepare(`
@@ -18,7 +43,9 @@ router.get("/", authenticate, (req, res) => {
            disk_total, disk_used, battery_percent, battery_charging,
            agent_version, status, last_seen, ping_ms, heartbeat_interval,
            metadata, created_at
-    FROM devices WHERE owner_id = ? ORDER BY created_at DESC
+    FROM devices WHERE owner_id = ? ORDER BY
+      CASE status WHEN 'online' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+      created_at DESC
   `).all(req.user.id);
   res.json({ devices: rows.map(parseDevice) });
 });
@@ -53,13 +80,11 @@ router.post("/", authenticate, requireRole("admin", "operator"), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, name.trim(), keyHash, keyPfx, req.user.id, JSON.stringify(tags), interval);
 
-    // Audit AFTER insert so device row exists
     audit({ userId: req.user.id, deviceId: id, action: "device.created", req });
 
     const device = db.prepare(
       "SELECT id, name, api_key_prefix, tags, status, heartbeat_interval, created_at FROM devices WHERE id = ?"
     ).get(id);
-
     res.status(201).json({ device: parseDevice(device), apiKey: rawKey });
   } catch (err) {
     if (err.message?.includes("UNIQUE"))
@@ -90,15 +115,19 @@ router.patch("/:id", authenticate, requireRole("admin", "operator"), (req, res) 
     .get(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ error: "Device not found" });
 
-  const newName     = name               ?? existing.name;
-  const newTags     = tags !== undefined  ? JSON.stringify(tags) : existing.tags;
-  const newInterval = heartbeat_interval  ?? existing.heartbeat_interval;
-
   db.prepare(`
-    UPDATE devices SET name=?, tags=?, heartbeat_interval=?,
-      updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
-    WHERE id=? AND owner_id=?
-  `).run(newName, newTags, newInterval, req.params.id, req.user.id);
+    UPDATE devices SET
+      name               = ?,
+      tags               = ?,
+      heartbeat_interval = ?,
+      updated_at         = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+    WHERE id = ? AND owner_id = ?
+  `).run(
+    name ?? existing.name,
+    tags !== undefined ? JSON.stringify(tags) : existing.tags,
+    heartbeat_interval ?? existing.heartbeat_interval,
+    req.params.id, req.user.id
+  );
 
   const device = db.prepare("SELECT * FROM devices WHERE id = ?").get(req.params.id);
   res.json({ device: parseDevice(device) });
@@ -113,38 +142,18 @@ router.delete("/:id", authenticate, requireRole("admin"), (req, res) => {
   res.json({ ok: true });
 });
 
-// ─── POST /api/devices/heartbeat — Windows agent calls this ──────────────────
+// ─── POST /api/devices/heartbeat ─────────────────────────────────────────────
 router.post("/heartbeat", deviceLimiter, authenticateDevice, (req, res) => {
   const b = req.body ?? {};
 
-  // Sanitize every value to types SQLite can bind:
-  // strings, numbers, null only — no booleans, no undefined, no objects
-  const str  = (v) => (v != null && v !== "" ? String(v).slice(0, 512) : null);
+  const str  = (v) => (v != null && v !== "" ? String(v).slice(0, 512)        : null);
   const int  = (v) => (v != null && !isNaN(Number(v)) ? Math.round(Number(v)) : null);
   const bool = (v) => (v != null ? (v === true || v === "true" || v === 1 ? 1 : 0) : null);
 
-  const os              = str(b.os);
-  const os_version      = str(b.os_version);
-  const hostname        = str(b.hostname);
-  const username        = str(b.username);
-  const ip_address      = str(b.ip_address);
-  const arch            = str(b.arch);
-  const cpu_model       = str(b.cpu_model);
-  const agent_version   = str(b.agent_version);
-  const cpu_cores       = int(b.cpu_cores);
-  const ram_total       = int(b.ram_total);
-  const ram_used        = int(b.ram_used);
-  const disk_total      = int(b.disk_total);
-  const disk_used       = int(b.disk_used);
-  const battery_percent = int(b.battery_percent);
-  const ping_ms         = int(b.ping_ms);
-  const battery_charging = bool(b.battery_charging);
-
-  // Safely merge metadata
   let merged = "{}";
   try {
     const existing = db.prepare("SELECT metadata FROM devices WHERE id = ?").get(req.device.id);
-    const prev = JSON.parse(existing?.metadata || "{}");
+    const prev     = JSON.parse(existing?.metadata || "{}");
     const incoming = (typeof b.metadata === "object" && b.metadata !== null) ? b.metadata : {};
     merged = JSON.stringify({ ...prev, ...incoming });
   } catch { merged = "{}"; }
@@ -164,21 +173,22 @@ router.post("/heartbeat", deviceLimiter, authenticateDevice, (req, res) => {
         cpu_model        = COALESCE(?, cpu_model),
         cpu_cores        = COALESCE(?, cpu_cores),
         ram_total        = COALESCE(?, ram_total),
-        ram_used         = COALESCE(?, ram_used),
+        ram_used         = ?,
         disk_total       = COALESCE(?, disk_total),
-        disk_used        = COALESCE(?, disk_used),
-        battery_percent  = COALESCE(?, battery_percent),
-        battery_charging = COALESCE(?, battery_charging),
+        disk_used        = ?,
+        battery_percent  = ?,
+        battery_charging = ?,
         agent_version    = COALESCE(?, agent_version),
         ping_ms          = COALESCE(?, ping_ms),
         metadata         = ?
       WHERE id = ?
     `).run(
-      os, os_version, hostname, username,
-      ip_address, arch, cpu_model, cpu_cores,
-      ram_total, ram_used, disk_total, disk_used,
-      battery_percent, battery_charging,
-      agent_version, ping_ms,
+      str(b.os),            str(b.os_version),   str(b.hostname),  str(b.username),
+      str(b.ip_address),    str(b.arch),          str(b.cpu_model), int(b.cpu_cores),
+      int(b.ram_total),     int(b.ram_used),
+      int(b.disk_total),    int(b.disk_used),
+      int(b.battery_percent), bool(b.battery_charging),
+      str(b.agent_version), int(b.ping_ms),
       merged, req.device.id
     );
   } catch (err) {
@@ -198,13 +208,14 @@ router.get("/audit/:id", authenticate, (req, res) => {
   res.json({ logs: logs.map(l => ({ ...l, details: JSON.parse(l.details || "{}") })) });
 });
 
+// ─── Helper ───────────────────────────────────────────────────────────────────
 function parseDevice(d) {
   if (!d) return d;
   return {
     ...d,
     tags:             JSON.parse(d.tags     || "[]"),
     metadata:         JSON.parse(d.metadata || "{}"),
-    battery_charging: !!d.battery_charging,
+    battery_charging: d.battery_charging === 1 || d.battery_charging === true,
   };
 }
 
