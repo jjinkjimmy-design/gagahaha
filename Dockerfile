@@ -1,3 +1,4 @@
+# Build timestamp: 2026-06-10 00:57:02 UTC
 # ─── Stage 1: Build React client ─────────────────────────────────────────────
 FROM node:20-alpine AS client-builder
 WORKDIR /build/client

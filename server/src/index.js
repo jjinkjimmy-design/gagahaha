@@ -1,6 +1,8 @@
 "use strict";
 require("dotenv").config();
 require("./config/db");
+const { ensureSecrets } = require("./config/secrets");
+ensureSecrets();
 
 const express = require("express");
 const http    = require("http");
