@@ -1,6 +1,6 @@
 {
   "name": "nexus-rdm-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "NexusRDM - unified API + static server (SQLite)",
   "main": "src/index.js",
   "type": "commonjs",
